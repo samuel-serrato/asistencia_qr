@@ -1,6 +1,8 @@
 import 'dart:convert';
+import 'package:diacritic/diacritic.dart';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
+import 'package:intl/intl.dart';
 
 class ListaAsistencia extends StatefulWidget {
   @override
@@ -15,10 +17,10 @@ class _ListaAsistenciaState extends State<ListaAsistencia> {
   DateTime selectedDate = DateTime.now(); // Fecha seleccionada
 
   Future<Map<String, dynamic>> fetchData() async {
-    final asistenciaResponse = await http
-        .get(Uri.parse('http://localhost:8000/asistencias_api/asistencia.php'));
-    final alumnosResponse = await http.get(
-        Uri.parse('http://localhost:8000/asistencias_api/listaAlumnos.php'));
+    final asistenciaResponse = await http.get(
+        Uri.parse('http://192.168.1.116:8000/asistencias_api/asistencia.php'));
+    final alumnosResponse = await http.get(Uri.parse(
+        'http://192.168.1.116:8000/asistencias_api/listaAlumnos.php'));
 
     if (asistenciaResponse.statusCode == 200 &&
         alumnosResponse.statusCode == 200) {
@@ -59,6 +61,15 @@ class _ListaAsistenciaState extends State<ListaAsistencia> {
   Widget build(BuildContext context) {
     final isDesktop = MediaQuery.of(context).size.width > 800;
 
+    String _formatDate(String dateString) {
+      // Convierte la cadena a un objeto DateTime
+      DateTime date = DateTime.parse(dateString);
+
+      // Formatea la fecha y la hora en 12 horas en español
+      final DateFormat formatter = DateFormat('h:mm:ss a', 'es_ES');
+      return formatter.format(date);
+    }
+
     return Scaffold(
         backgroundColor: Color(0xFFEFEFEF),
         appBar: PreferredSize(
@@ -75,6 +86,28 @@ class _ListaAsistenciaState extends State<ListaAsistencia> {
               ),
             ),
             child: AppBar(
+              //automaticallyImplyLeading: true,
+              leading: IconButton(
+                icon: Icon(Icons.arrow_back, color: Colors.white),
+                onPressed: () => Navigator.of(context).pop(),
+              ),
+              actions: [
+                Padding(
+                  padding: const EdgeInsets.only(right: 15),
+                  child: IconButton(
+                    icon: const Icon(
+                      Icons.replay_circle_filled_sharp,
+                      color: Colors.white,
+                    ),
+                    tooltip: 'Recargar',
+                    onPressed: () {
+                      setState(() {
+                        futureData = fetchData();
+                      });
+                    },
+                  ),
+                ),
+              ],
               centerTitle: true,
               backgroundColor: Colors.transparent,
               elevation: 0,
@@ -113,11 +146,16 @@ class _ListaAsistenciaState extends State<ListaAsistencia> {
                       fechaEntrada.month == selectedDate.month &&
                       fechaEntrada.day == selectedDate.day;
 
-                  String lowerSearchQuery = searchQuery.toLowerCase();
-                  String nombres = alumno['nombres']?.toLowerCase() ?? '';
-                  String apellidoP = alumno['apellidoP']?.toLowerCase() ?? '';
-                  String apellidoM = alumno['apellidoM']?.toLowerCase() ?? '';
-                  String matriculaLower = matricula.toLowerCase();
+                  String lowerSearchQuery =
+                      removeDiacritics(searchQuery.toLowerCase());
+                  String nombres =
+                      removeDiacritics(alumno['nombres']?.toLowerCase() ?? '');
+                  String apellidoP = removeDiacritics(
+                      alumno['apellidoP']?.toLowerCase() ?? '');
+                  String apellidoM = removeDiacritics(
+                      alumno['apellidoM']?.toLowerCase() ?? '');
+                  String matriculaLower =
+                      removeDiacritics(matricula.toLowerCase());
 
                   bool matchesSearch = nombres.contains(lowerSearchQuery) ||
                       apellidoP.contains(lowerSearchQuery) ||
@@ -168,7 +206,9 @@ class _ListaAsistenciaState extends State<ListaAsistencia> {
                                   onPressed: () => _selectDate(context),
                                   icon: Icon(Icons.calendar_today),
                                   label: Text(
-                                    "${selectedDate.toLocal().toString().split(' ')[0]}",
+                                    DateFormat('E, d MMM yyyy')
+                                        .format(selectedDate),
+                                    //"${selectedDate.toLocal().toString().split(' ')[0]}",
                                     style: TextStyle(
                                       fontSize: 16,
                                       color: Colors.black,
@@ -325,6 +365,8 @@ class _ListaAsistenciaState extends State<ListaAsistencia> {
                                     });
                                   },
                                   decoration: InputDecoration(
+                                    floatingLabelStyle:
+                                        TextStyle(color: Colors.black),
                                     labelText: 'Buscar por nombre o matrícula',
                                     border: OutlineInputBorder(
                                         borderSide: BorderSide.none,
@@ -332,6 +374,11 @@ class _ListaAsistenciaState extends State<ListaAsistencia> {
                                             BorderRadius.circular(17)),
                                     fillColor: Colors.white,
                                     filled: true,
+                                    prefixIcon: Icon(
+                                      Icons.search,
+                                      size: 20,
+                                      color: Colors.black87,
+                                    ),
                                   ),
                                 ),
                                 decoration: BoxDecoration(
@@ -571,6 +618,8 @@ class _ListaAsistenciaState extends State<ListaAsistencia> {
                                 });
                               },
                               decoration: InputDecoration(
+                                floatingLabelStyle:
+                                    TextStyle(color: Colors.black),
                                 labelText: 'Buscar por nombre o matrícula',
                                 labelStyle: TextStyle(fontSize: 12),
                                 border: OutlineInputBorder(
@@ -578,6 +627,11 @@ class _ListaAsistenciaState extends State<ListaAsistencia> {
                                     borderRadius: BorderRadius.circular(17)),
                                 fillColor: Colors.white,
                                 filled: true,
+                                prefixIcon: Icon(
+                                  Icons.search,
+                                  size: 18,
+                                  color: Colors.black87,
+                                ),
                               ),
                             ),
                             decoration: BoxDecoration(
@@ -622,6 +676,10 @@ class _ListaAsistenciaState extends State<ListaAsistencia> {
                                   minWidth: MediaQuery.of(context).size.width,
                                 ),
                                 child: DataTable(
+                                  border: TableBorder(
+                                    horizontalInside: BorderSide(
+                                        color: Color(0xFFcacaca), width: 1),
+                                  ),
                                   columnSpacing: 16.0,
                                   headingRowColor:
                                       MaterialStateColor.resolveWith(
@@ -694,7 +752,7 @@ class _ListaAsistenciaState extends State<ListaAsistencia> {
                                     ),
                                     DataColumn(
                                       label: Text(
-                                        'Grado',
+                                        'Sección',
                                         style: TextStyle(
                                           color: Colors.white,
                                           fontWeight: FontWeight.bold,
@@ -709,7 +767,7 @@ class _ListaAsistenciaState extends State<ListaAsistencia> {
                                     ),
                                     DataColumn(
                                       label: Text(
-                                        'Sección',
+                                        'Grado',
                                         style: TextStyle(
                                           color: Colors.white,
                                           fontWeight: FontWeight.bold,
@@ -761,8 +819,8 @@ class _ListaAsistenciaState extends State<ListaAsistencia> {
                                         ),
                                         DataCell(
                                           Text(
-                                            asistenciaItem['fechaEntrada'] ??
-                                                '',
+                                            _formatDate(
+                                                asistenciaItem['fechaEntrada']),
                                             style: TextStyle(
                                               color: Colors.black,
                                               fontSize: MediaQuery.of(context)
@@ -804,7 +862,7 @@ class _ListaAsistenciaState extends State<ListaAsistencia> {
                                         ),
                                         DataCell(
                                           Text(
-                                            alumno['grado'] ?? '',
+                                            alumno['seccion'] ?? '',
                                             style: TextStyle(
                                               color: Colors.black,
                                               fontSize: MediaQuery.of(context)
@@ -818,7 +876,7 @@ class _ListaAsistenciaState extends State<ListaAsistencia> {
                                         ),
                                         DataCell(
                                           Text(
-                                            alumno['seccion'] ?? '',
+                                            alumno['grado'] ?? '',
                                             style: TextStyle(
                                               color: Colors.black,
                                               fontSize: MediaQuery.of(context)

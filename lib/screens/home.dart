@@ -1,31 +1,92 @@
 import 'dart:convert';
-import 'package:asistencia_qr/screens/listaAlumnos.dart';
-import 'package:asistencia_qr/screens/listaAsistencia.dart';
 import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http;
 import 'package:flutter_web_qrcode_scanner/flutter_web_qrcode_scanner.dart';
+import 'package:http/http.dart' as http;
 
-class HomePage extends StatefulWidget {
+class QRScannerPage extends StatefulWidget {
+  QRScannerPage();
+
   @override
-  _HomePageState createState() => _HomePageState();
+  _QRScannerPageState createState() => _QRScannerPageState();
 }
 
-class _HomePageState extends State<HomePage> {
-  final List<Map<String, String>> qrCodeList = [];
+class _QRScannerPageState extends State<QRScannerPage>
+    with SingleTickerProviderStateMixin {
+  String _qrCodeResult = 'Escanea un código QR';
+  String? _lastQrCodeResult;
+  late AnimationController _animationController;
+  late CameraController _controller;
+  bool _isCameraActive = true;
   List<Map<String, String>> alumnosList = [];
+  final List<Map<String, String>> qrCodeList = [];
   String alumnoNombre = '';
+  TextEditingController _manualMatriculaController = TextEditingController();
 
   @override
   void initState() {
     super.initState();
     _fetchAlumnos();
+    _animationController = AnimationController(
+      vsync: this,
+      duration: Duration(seconds: 1),
+    )..repeat(reverse: true);
+
+    _controller = CameraController(autoPlay: true);
+    _startCamera();
+  }
+
+  void _startCamera() {
+    try {
+      _controller.startVideoStream();
+    } catch (e) {
+      print("Error starting camera: $e");
+    }
+  }
+
+  void _stopCamera() {
+    try {
+      _controller.stopVideoStream();
+    } catch (e) {
+      print("Error stopping camera: $e");
+    }
+  }
+
+  @override
+  void dispose() {
+    _animationController.dispose();
+    _stopCamera();
+    _manualMatriculaController.dispose();
+    super.dispose();
+  }
+
+  void _showQRCodeResult(String result, BuildContext context) {
+    if (result.isEmpty) {
+      return;
+    }
+    setState(() {
+      _qrCodeResult = result;
+      _lastQrCodeResult = result;
+    });
+
+    addQrCode(result, context);
+
+    Future.delayed(Duration(seconds: 3), () {
+      _stopCamera();
+      setState(() {
+        _qrCodeResult = 'Escanea un código QR';
+        _lastQrCodeResult = null;
+      });
+      Future.delayed(Duration(milliseconds: 300), () {
+        _startCamera();
+      });
+    });
   }
 
   // Obtener lista de alumnos
   Future<void> _fetchAlumnos() async {
     try {
       final response = await http.get(
-        Uri.parse('http://localhost:8000/asistencias_api/listaAlumnos.php'),
+        Uri.parse('http://192.168.1.116:8000/asistencias_api/listaAlumnos.php'),
       );
 
       if (response.statusCode == 200) {
@@ -51,7 +112,7 @@ class _HomePageState extends State<HomePage> {
   Future<void> _sendMatricula(String matricula, BuildContext context) async {
     try {
       final response = await http.post(
-        Uri.parse('http://localhost:8000/asistencias_api/asistencia.php'),
+        Uri.parse('http://192.168.1.116:8000/asistencias_api/asistencia.php'),
         headers: <String, String>{
           'Content-Type': 'application/json; charset=UTF-8',
         },
@@ -77,6 +138,8 @@ class _HomePageState extends State<HomePage> {
       barrierDismissible: false,
       builder: (BuildContext context) {
         return AlertDialog(
+          backgroundColor: Colors.white,
+          surfaceTintColor: Colors.white,
           contentPadding: EdgeInsets.all(20),
           content: Padding(
             padding: const EdgeInsets.symmetric(vertical: 20),
@@ -127,6 +190,11 @@ class _HomePageState extends State<HomePage> {
     var alumno = alumnosList.firstWhere(
         (alumno) => alumno['matriculaSoc'] == code,
         orElse: () => {'nombres': 'Alumno no encontrado'});
+
+    // Mensajes de depuración
+    print('Código escaneado: $code');
+    print(
+        'Alumno encontrado: ${alumno['nombres']} ${alumno['apellidoP']} ${alumno['apellidoM']}');
     setState(() {
       alumnoNombre =
           '${alumno['nombres']} ${alumno['apellidoP']} ${alumno['apellidoM']}';
@@ -140,100 +208,84 @@ class _HomePageState extends State<HomePage> {
     });
   }
 
-  @override
-  Widget build(BuildContext context) {
-    return MaterialApp(
-        routes: {
-          '/listaAsistencia': (context) => ListaAsistencia(),
-          '/listAlumno': (context) => ListaAlumnos(),
-        },
-        debugShowCheckedModeBanner: false,
-        home: Scaffold(
-          appBar: PreferredSize(
-            preferredSize:
-                Size.fromHeight(60.0), // Ajusta la altura según sea necesario
-            child: Container(
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  colors: [
-                    Color.fromARGB(255, 28, 100, 163),
-                    Color(0xFF181F4B),
-                  ],
-                  begin: Alignment.topLeft,
-                  end: Alignment.centerRight,
-                ),
-              ),
-              child: AppBar(
-                backgroundColor:
-                    Colors.transparent, // Haz el fondo del AppBar transparente
-                elevation: 0, // Elimina la sombra del AppBar
-                title: Center(
-                    child: Text(
-                  'Asistencia',
-                  style: TextStyle(color: Colors.white),
-                )),
-              ),
+  void _showManualMatriculaDialog() {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          backgroundColor: Colors.white,
+          surfaceTintColor: Colors.white,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(10.0),
+          ),
+          title: Text(
+            'Ingresar Matrícula Manualmente',
+            style: TextStyle(
+              fontWeight: FontWeight.bold,
+              color: Colors.black87,
             ),
           ),
-          body: QRScannerPage(addQrCode: addQrCode, alumnoNombre: alumnoNombre),
-        ));
+          content: TextField(
+            controller: _manualMatriculaController,
+            decoration: InputDecoration(
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(8.0),
+              ),
+              enabledBorder: OutlineInputBorder(
+                borderSide: BorderSide(
+                    color: Colors.grey,
+                    width: 1.0), // Borde cuando no está enfocado
+                borderRadius: BorderRadius.circular(8.0),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderSide: BorderSide(
+                    color: Colors.blue,
+                    width: 2.0), // Borde cuando está enfocado
+                borderRadius: BorderRadius.circular(8.0),
+              ),
+              labelText: 'Matrícula',
+              labelStyle: TextStyle(color: Colors.blue),
+            ),
+            keyboardType: TextInputType.text,
+          ),
+          actions: <Widget>[
+            TextButton(
+              onPressed: () {
+                Navigator.of(context).pop();
+              },
+              child: Text('Cancelar'),
+              style: ButtonStyle(
+                foregroundColor: MaterialStateProperty.all(Colors.redAccent),
+                overlayColor: MaterialStateProperty.all(
+                  Colors.redAccent.withOpacity(0.1),
+                ),
+              ),
+            ),
+            TextButton(
+              onPressed: () {
+                _handleManualMatricula();
+                Navigator.of(context).pop();
+              },
+              child: Text('Enviar'),
+              style: ButtonStyle(
+                foregroundColor: MaterialStateProperty.all(Colors.blue),
+                overlayColor: MaterialStateProperty.all(
+                  Colors.blue.withOpacity(0.1),
+                ),
+              ),
+            ),
+          ],
+        );
+      },
+    );
   }
-}
 
-class QRScannerPage extends StatefulWidget {
-  final Function(String, BuildContext) addQrCode;
-  final String alumnoNombre;
-
-  QRScannerPage({required this.addQrCode, required this.alumnoNombre});
-
-  @override
-  _QRScannerPageState createState() => _QRScannerPageState();
-}
-
-class _QRScannerPageState extends State<QRScannerPage>
-    with SingleTickerProviderStateMixin {
-  String _qrCodeResult = 'Escanea un código QR';
-  String? _lastQrCodeResult;
-  late AnimationController _animationController;
-  CameraController _controller = CameraController(autoPlay: true);
-
-  @override
-  void initState() {
-    super.initState();
-    _animationController = AnimationController(
-      vsync: this,
-      duration: Duration(seconds: 1),
-    )..repeat(reverse: true);
-  }
-
-  @override
-  void dispose() {
-    _animationController.dispose();
-    _controller.dispose();
-    super.dispose();
-  }
-
-  void _showQRCodeResult(String result, BuildContext context) {
-    if (result.isEmpty) {
-      return;
+  void _handleManualMatricula() {
+    final matricula = _manualMatriculaController.text.trim();
+    if (matricula.isNotEmpty) {
+      _sendMatricula(matricula, context);
+      _manualMatriculaController.clear();
     }
-    setState(() {
-      _qrCodeResult = result;
-      _lastQrCodeResult = result;
-    });
-
-    widget.addQrCode(result, context);
-
-    Future.delayed(Duration(seconds: 3), () {
-      _controller.stopVideoStream();
-      setState(() {
-        _qrCodeResult = 'Escanea un código QR';
-        _lastQrCodeResult = null;
-      });
-      Future.delayed(Duration(milliseconds: 300), () {
-        _controller.startVideoStream();
-      });
-    });
   }
 
   @override
@@ -242,6 +294,33 @@ class _QRScannerPageState extends State<QRScannerPage>
     final isMobile = size.width < 600;
 
     return Scaffold(
+      appBar: PreferredSize(
+        preferredSize:
+            Size.fromHeight(60.0), // Ajusta la altura según sea necesario
+        child: Container(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              colors: [
+                Color.fromARGB(255, 28, 100, 163),
+                Color(0xFF181F4B),
+              ],
+              begin: Alignment.topLeft,
+              end: Alignment.centerRight,
+            ),
+          ),
+          child: AppBar(
+            backgroundColor:
+                Colors.transparent, // Haz el fondo del AppBar transparente
+            elevation: 0, // Elimina la sombra del AppBar
+            title: Center(
+              child: Text(
+                'Asistencia',
+                style: TextStyle(color: Colors.white),
+              ),
+            ),
+          ),
+        ),
+      ),
       backgroundColor: Colors.white,
       body: Center(
         child: Container(
@@ -257,7 +336,7 @@ class _QRScannerPageState extends State<QRScannerPage>
               ),
               SizedBox(height: 10),
               Text(
-                widget.alumnoNombre,
+                alumnoNombre,
                 style: TextStyle(fontSize: 20, fontWeight: FontWeight.w500),
                 textAlign: TextAlign.center,
               ),
@@ -333,6 +412,35 @@ class _QRScannerPageState extends State<QRScannerPage>
                   ],
                 ),
               ),
+              SizedBox(height: 20),
+              // Botón para abrir el diálogo
+              TextButton(
+                onPressed: _showManualMatriculaDialog,
+                style: ButtonStyle(
+                  overlayColor: WidgetStateProperty.resolveWith<Color?>(
+                    (Set<WidgetState> states) {
+                      if (states.contains(WidgetState.hovered)) {
+                        return Colors.white.withOpacity(
+                            0); // Color cuando el cursor está encima
+                      }
+                      return null; // Sin color de overlay por defecto
+                    },
+                  ),
+                  foregroundColor: WidgetStateProperty.resolveWith<Color?>(
+                    (Set<WidgetState> states) {
+                      if (states.contains(WidgetState.hovered)) {
+                        return Color(
+                            0xFFB80000); // Color del texto cuando está encima
+                      }
+                      return Colors.black; // Color del texto por defecto
+                    },
+                  ),
+                ),
+                child: Text(
+                  'Escribir matrícula',
+                  style: TextStyle(fontWeight: FontWeight.w600),
+                ),
+              )
             ],
           ),
         ),
@@ -346,7 +454,10 @@ class _QRScannerPageState extends State<QRScannerPage>
             FloatingActionButton.extended(
               backgroundColor: Color(0xFFB80000),
               onPressed: () {
-                Navigator.pushNamed(context, '/listAlumno');
+                _stopCamera(); // Detener la cámara antes de navegar
+                Navigator.pushNamed(context, '/screen1').then((_) {
+                  _startCamera(); // Reanudar la cámara al regresar
+                });
               },
               icon: Icon(
                 Icons.table_chart,
@@ -360,7 +471,10 @@ class _QRScannerPageState extends State<QRScannerPage>
             FloatingActionButton.extended(
               backgroundColor: Color(0xFFB80000),
               onPressed: () {
-                Navigator.pushNamed(context, '/listaAsistencia');
+                _stopCamera(); // Detener la cámara antes de navegar
+                Navigator.pushNamed(context, '/screen2').then((_) {
+                  _startCamera(); // Reanudar la cámara al regresar
+                });
               },
               icon: Icon(
                 Icons.list,
@@ -372,6 +486,44 @@ class _QRScannerPageState extends State<QRScannerPage>
               ),
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+class Screen1 extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: Text('Screen 1'),
+      ),
+      body: Center(
+        child: ElevatedButton(
+          onPressed: () {
+            Navigator.pop(context);
+          },
+          child: Text('Go Back to Scanner'),
+        ),
+      ),
+    );
+  }
+}
+
+class Screen2 extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: Text('Screen 2'),
+      ),
+      body: Center(
+        child: ElevatedButton(
+          onPressed: () {
+            Navigator.pop(context);
+          },
+          child: Text('Go Back to Scanner'),
         ),
       ),
     );
