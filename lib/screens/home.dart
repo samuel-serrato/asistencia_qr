@@ -437,7 +437,7 @@ class _QRScannerPageState extends State<QRScannerPage>
                   ),
                 ),
                 child: Text(
-                  'Escribir matrícula',
+                  'Escribir matrículaa',
                   style: TextStyle(fontWeight: FontWeight.w600),
                 ),
               )
